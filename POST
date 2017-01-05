@@ -1,0 +1,422 @@
+# ---------------------------------------
+//==名稱:硬幣掛機腳本-失敗品
+//==版本:0.4a
+//==編寫時間:2016/12/23-2016/1/6
+//==腳本軟體:按鍵精靈9
+//==對應Discords 2016/12/22版 舒適、灰底
+//==開發電腦解析度:1440X900
+//==腳本概念
+//>[按<啟動熱鍵>啟動]
+//>     ↓
+//>[使輸入欄作用]
+//>     ↓
+//>[下注]
+//>     ↓
+//>[函數判斷]
+//> 1.前3注固定下注1元(控制常數:frequency1)
+//> 2.依起始金額(Startingmoney)計算放大倍數
+//>   (放大倍數) 最小金額 
+//>   (1) 852 (1.5) 1618 (2) 2728 (3) 4314 ...
+//> 3.考量大多數人喵幣只有約0~500，使用保護措施，避免賠光，方法是將特殊賭法往後延
+//>   (手上金錢) 下注次數增加
+//>   (213) 1  
+//> 4.當有2注以上是贏，則採用平賭法，輸則每注乘2.4倍再下，贏錢就從頭開始
+//>   (第幾把) 下注金額
+//>   (1)  1(2)  2(3) 5(4) 12(5) 27(6) 64(7) 153
+//> 5.當有2注以上是輸，則採用逆平賭法，贏則每注乘1.5倍再下，輸錢就從頭開始
+//>   (第幾把) 下注金額
+//>   (1)  1(2)  5(3) 7(4) 11(5) 16(6) 23(7) 35
+//> 6.第7注下完即重置，以利停損
+//> 7.提供土豪用倍數(multiple)，特殊下法的賭金乘上該值
+//>     ↓
+//>[找色迴圈]
+//> 1.以使用者定義找色數量與位置
+//> 2.如果沒找到顏色，每隔0.5秒找一次，找9次沒抓到色即同注重下。
+//> 3.當exclamation=1時，從文字頭到尾找錢包顏色，確定是否贏錢
+//> 4.當exclamation=2時，從名稱位置頭到尾找顏色，確定是否為MeowTrixBOT
+//> 5.當exclamation=3時，從下注欄頭到尾找顏色，確定下注者是你
+//> 6.當exclamation=4時，從下注欄頭到尾找顏色，確定沒有其他人發話
+//☆{7.此腳本容易被人干擾，如被干擾，則重置下注勝負紀錄。}
+//>     ↓
+//>[跳至函數判斷]
+//>     ↓
+//>[金錢迴圈]
+//> 1.記錄每注所獲的的金錢
+//> 2.賠30%、賺50%則此程式自動停止，以利停損
+//>[按<全部終止熱鍵>終止]
+//--------------------------------------
+//===使用者函數定義(如使用按鍵精靈，修改請從腳本屬性修改，確認無誤再修改原始檔案)===
+//手上金額、下注金額等
+UserVar Startingmoney = 100  "下注前的起始金錢"
+UserVar multiple1 =1         "下注金額的倍率，土豪玩法用"
+//點擊輸入欄用
+UserVar x1 = 402             "點擊輸入欄的X軸位置"
+UserVar y1 = 805             "點擊輸入欄的y軸位置"
+//防意外程度，數值越高有越多防BUG措施，但須定義的條件越多
+UserVar exclamation = 1      "篩選數:數值越高有越多防出錯措施"
+//exclamation>=1  只找錢包顏色
+UserVar Cmoney = "88D8FD"    "錢包圖案顏色:黃"
+UserVar CLx1 = 395           "文字列左上X軸位置"
+UserVar CLy1 = 640           "文字列左上y軸位置"
+UserVar CRx1 = 1120          "文字列右下X軸位置"
+UserVar CRy1 = 740           "文字列右下y軸位置"
+//exclamation>=2  找BOT機器人顏色
+UserVar Cbot = "55C22E"      "機器人名稱顏色:綠"
+UserVar CLx2 = 390           "BOT整框左上X軸位置"
+UserVar CLy2 = 580           "BOT整框左上y軸位置"
+UserVar CRx2 = 470           "BOT整框右下X軸位置"
+UserVar CRy2 = 640           "BOT整框右下y軸位置"
+//exclamation>=3  找下注者顏色
+UserVar Cuser = "F88442"     "下注者名稱顏色"
+//狀況回報
+UserVar testEX = 1 "testEX=0即開啟測試模式"
+//====初始自定義變數====
+Dim num1, num2, num3, num4, num5, num6, num7, money, frequency1, frequency2, frequency3
+num1 = 0             //(計算次數)
+num2 = 0             //(計算連續次數)
+num3 = 0             //(計算計算特殊賭法賭金)
+num4 = 0             //(計算贏來的錢)
+num5 = 0             //(計算下注最小安全閥值)
+num6 = 0             //(計算每注的值)
+num7 = 0             //(暫時紀錄值)
+money = 0            //(當下所持金錢)
+frequency1 = 3       //(常數:幾次後使用平賭法或逆平賭法)
+frequency2 = 7       //(常數:幾次後強制停損，重置下注法)
+frequency3 = 0       //(保護措施值)
+Dim multiple2, DecideX, DecideY, DecideC, outcome1, outcome2
+multiple2 = 1        //(常數:下注的安全閥值係數)
+multiple3 = 0.5      //(常數:安全閥值係數增加量)
+DecideX = 0          //(判斷X軸位置是否存在)
+DecideY = 0          //(判斷y軸位置是否存在)
+DecideC = 0          //(回報判斷值)
+Cbug=0               //(抓色是否有問題)
+outcome1 = 0         //(勝負值)
+outcome2 = 0         //(勝負比對值)
+//exclamation>=3  找下注者顏色
+Dim CLx3, CLy3, CRx3,  CRy3
+CLx3 = CLx2          //下注者整框左上X軸位置
+CLy3 = CLy2 - 135    //下注者整框左上y軸位置
+CRx3 = CRx1          //下注者整框右下X軸位置
+CRy3 = CRy2 - 20     //下注者整框右下y軸位置
+//exclamation>=4  找非下注者顏色的位置
+Dim CLx4, CLy4, CRx4,  CRy4
+CLx4 = CLx3 - 10     //非下注者整框左上X軸位置
+CLy4 = CLy3          //非下注者整框左上y軸位置
+CRx4 = CRx3 - 10     //非下注者整框右下X軸位置
+CRy4 = CRy3          //非下注者整框右下y軸位置
+//控制exclamation值在1-3內
+If exclamation < 1 Then 
+    exclamation = 1
+End If
+If exclamation > 4 Then 
+    exclamation = 4
+End If
+exclamation = fix(exclamation) //fix()捨棄小數點
+//====點擊輸入欄====
+sub start
+    MoveTo x1, y1  //控制滑鼠位置到輸入欄
+    LeftClick 1
+    Delay 1
+end sub
+//====初始下注====
+Sub post
+    num3 = 1
+    SayString "$bf "
+    SayString num3
+    SayString  " h"
+    Delay 1
+    KeyPress "Enter", 1
+    Delay 1
+end Sub
+//====找色====
+Sub Color
+    num1 = 0
+    Do While True
+        num1 = num1 + 1
+        If num1 < 9 Then 
+            Delay 600
+            DecideC = 0
+            //找BOT
+            If exclamation>=2 then
+                FindColorEx CLx2, CLx2, CRx2, CRx2, Cbot, 0, 0.8, DecideX, DecideY
+                If DecideX > 0 And DecideY > 0 Then 
+                    DecideC = DecideC + 1
+                Else 
+                    DecideC = DecideC - 1
+                End If  
+            End If
+            Delay 1
+            //找使用者
+            If exclamation>=3 then
+                FindColorEx CLx3, CLx3, CRx3, CRx3, Cuser, 0, 0.8, DecideX, DecideY
+                If DecideX > 0 And DecideY > 0 Then 
+                    DecideC = DecideC + 1
+                Else 
+                    DecideC = DecideC - 1
+                End If  
+            End If
+            //確定找色位置無誤
+            If DecideC >= 1 Then
+                Delay 1
+                If exclamation>=10 then //有問題
+                    FindColorEx CLx4, CLx4, CRx4, CRx4, Cuser, 0, 0.8, DecideX, DecideY
+                    //確認沒人發話，有的話下注勝負紀錄重置
+                    If DecideX < 0 And DecideY < 0 Then 
+                        outcome1 = 0
+                        num2 = 0
+                        Goto run
+                    End If 
+                End If
+                Delay 900
+                //找錢包的顏色
+                FindColorEx CLx1, CLx1, CRx1, CRx1, Cmoney, 0, 0.9, DecideX, DecideY
+                If DecideX > 0 And DecideY > 0 Then 
+                    outcome1 = outcome1 + 1
+                    num4 = num3 * 2
+                Else 
+                    outcome1 = outcome1 - 1
+                End If
+                outcome2 = outcome1
+                Call Holdmoney
+                Delay 1
+                Exit Do
+            End If
+        End If
+        //循環9次找不到顏色
+        If num1 = 9 Then
+            Cbug = Cbug + 1
+            Exit Do
+        End If
+        Delay 1
+    Loop
+End Sub
+//====持有錢運算====
+Sub Holdmoney
+    //計算當下金錢
+    money = Startingmoney - num3 + num4
+    If ( outcome1 + 2 ) >= frequency1 or ( outcome1 - 2 ) <= - frequency1  Then 
+        //
+        If many < 213 Then 
+            If frequency3 = 0 Then 
+                frequency1 = frequency1 +1
+                frequency3 = 1
+            End If
+        Else 
+            If frequency3 > 0 Then 
+                frequency1 = frequency1 -1
+                frequency3 = 0
+            End If
+        End If
+        //如果已經賠30%，則此程式自動停止
+        If ( money / Startingmoney ) < 0.8 Then 
+            Delay 1
+            SayString "賠了20%收手吧"
+            Delay 1
+            KeyPress "Enter", 1
+            Delay 500
+            SayString "$$$"
+            Delay 1
+            KeyPress "Enter", 1
+            ExitScript 
+        End If
+        Delay 1
+        //當賭資超過安全閥值，則將下注金額增加
+        Rem lim
+        If money > num5 Then 
+            num1 = 0
+            num5 = 0
+            multiple2 = multiple2 + 0.5
+            For frequency2
+                //計算下注所需最大金額
+                num6 = Fix((4 / 5) * (2.4 ^ (frequency2 - num1)) * multiple1) + 1
+                If num1 = 7 Then 
+                    //紀錄平賭法的最大值
+                    num7 = num6
+                End If
+                num6 = num6 * multiple2
+                num5 = num5 + num6
+                num6 = Fix(3 * (1.5 ^ (frequency2 - num1)) * multiple1) + 1
+                num6 = num6 * multiple2
+                num5 = num5 - num6
+                num1 = num1 + 1
+                Delay 1
+            Next
+            //計算安全閥值
+            num5 = ( num5 + ( num7 * multiple2) * ( 1.6 ^ multiple2))
+            num5 = Fix( num5 )+ 1
+            Delay 1
+            Goto lim  //再判斷一次賭資是否超過安全閥值
+        End If
+        Delay 1
+    End If
+End Sub
+//====特殊下注法====
+Sub Operation
+    num2 = num2 + 1
+    //贏面大時用平賭法(2.4倍成長再無條件進位)
+    If outcome1 + 1 >= frequency1 Then 
+        num3 = (4 / 5) * (2.4 ^ num2) * multiple1
+    End If
+    //賠多時用逆平賭法(1.5倍成長再無條件進位)
+    If  outcome1 - 1 <= -frequency1 Then 
+        num3 = 3 * (1.5 ^ (num2)) * multiple1
+    End If
+    num3 = Fix(num3 * multiple2) + 1
+    SayString "$bf "
+    SayString num3
+    SayString  " h"
+    Delay 1
+    KeyPress "Enter", 1
+    Call Color
+    Delay 1
+End Sub
+//====下注運算====
+Sub OperationEX
+    //使用平賭法時，贏了即重置
+    If outcome1 >= frequency1 Then
+        If outcome1 > outcome2  Then 
+            outcome1 = 1
+            num2 = 0
+        ElseIf outcome1 < outcome2  Then
+            outcome1 = outcome1 + 1
+        End If
+    End If
+    //使用逆平賭法時，輸了即重置
+    If outcome1 - 1 <= - frequency1 Then
+        If  outcome1 < outcome2 Then 
+            outcome1 = - 1
+            num2 = 0
+        ElseIf  outcome1 > outcome2   Then
+            outcome1 = outcome1 - 1
+        End If
+    End If
+    //特殊賭法達上限，重置停損
+    If num2 >= frequency2 or num2 <= - frequency2  Then 
+        outcome1 = 0
+        num2 = 0
+    End If
+End Sub
+//-----------------------------------------------------------
+//=====測試、除錯用=====
+Dim test1, test2, test3
+UserVar testEX = 1 "指定testEX=0即開啟測試模式"
+test1 = 0
+test2 = 0
+test3 = 0
+Sub Test
+    If testEX = 0 Then 
+        Delay 1000
+        If test1 = 0 and test2 >= 0 Then 
+            SayString "第1注"
+            Delay 1
+            KeyPress "Enter", 1
+            test1 = test1 + 1
+        End If
+        If test1 = 1 and test2 >= 9 Then 
+            SayString "第10注"
+            Delay 1
+            KeyPress "Enter", 1
+            test1 = test1 + 1
+        End If
+        If test1 = 2 and test2 >= 100 Then 
+            SayString "第100注"
+            Delay 1
+            KeyPress "Enter", 1
+            Delay 1
+            SayString "$$$"
+            Delay 10
+            KeyPress "Enter", 1
+            test1 = test1 + 1
+            Startingmoney = 200
+            Call Holdmoney
+            If frequency3 = 0 Then 
+                SayString "測試保護機制開始"
+                Delay 10
+                KeyPress "Enter", 1
+                Delay 1
+                KeyPress "Enter", 1
+            End If
+        End If
+        If test1 = 3 and test2 >= 250 Then 
+            SayString "第250注"
+            Delay 1
+            KeyPress "Enter", 1
+            Delay 1
+            SayString "$$$"
+            Delay 1
+            KeyPress "Enter", 1
+            test1 = test1 + 1
+        End If
+        If test1 = 4 and test2 >= 500 Then 
+            SayString "第500注"
+            Delay 1
+            KeyPress "Enter", 1
+            Delay 1
+            SayString "$$$"
+            Delay 1
+            KeyPress "Enter", 1
+            test1 = test1 + 1
+        End If
+        If test1 = 5 and test2 >= 1000 Then 
+            SayString "第1000注，測試完畢。"
+            Delay 1
+            KeyPress "Enter", 1
+            Delay 1
+            SayString "$$$"
+            Delay 1
+            KeyPress "Enter", 1
+            SayString "@有看過被冰起來的聖甲蟲嗎?#1966 "
+            Delay 1
+            KeyPress "Enter", 1
+            ExitScript
+        End If
+        test2 = test2 + 1
+        If test3 < Cbug Then 
+            If Cbug > 0 Then 
+                SayString "找色失敗"
+                SayString Cbug 
+                SayString  "次"
+                Delay 1
+                KeyPress "Enter", 1
+            End If
+            test3 = Cbug 
+        End If
+        If Cbug >= 9 Then 
+            SayString "找色失敗次數過多，臨時終止，請檢查"
+            Delay 1
+            KeyPress "Enter", 1
+            ExitScript
+        End If
+        If num2 = 6 Then 
+            SayString "特殊賭法第六注，心臟準備好了嗎?"
+            Delay 10
+            KeyPress "Enter", 1
+            Delay 1000
+        End If
+        If num2 = frequency2 Then 
+            SayString "特殊賭法第七注，心臟準備好了嗎?"
+            Delay 10
+            KeyPress "Enter", 1
+            Delay 2000
+        End If
+    End If
+End Sub
+//----------------------------------------
+//====正式運行====
+Rem run  //循環標記
+Call start
+Call Test
+Delay 2500
+If outcome1 < frequency1 and outcome1 > - frequency1  Then 
+    Call post
+    Delay 1
+    Call Color
+Else  
+    Call Operation
+End If
+Call OperationEX
+Delay 10
+Goto run //於運行內循環
+ExitScript
+//--------------------
+#-----------------
